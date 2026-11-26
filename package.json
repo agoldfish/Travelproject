@@ -1,0 +1,13 @@
+{
+  "name": "hometime",
+  "private": true,
+  "description": "Home Time: live bus and train journeys home",
+  "scripts": {
+    "test": "node --test tests/*.test.js tests/*.test.mjs",
+    "build:worker": "esbuild worker/src/index.js --bundle --format=esm --target=es2022 --outfile=worker/dist/hometime-worker.js --legal-comments=inline"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "http_ece": "1.2.0"
+  }
+}

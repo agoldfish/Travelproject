@@ -10,14 +10,9 @@ or open it from Siri with a Shortcut.
 - A map draws the selected route.
 - **Delay alerts:** tap *Delay alerts* and the app watches your next journey, plus any you tap 🔔 on.
   It alerts you when a bus or train is late (and again if it gets later), early, back on time, cancelled,
-  or has left your stop early. You choose the threshold (1–10 min). Alerts appear as banners with a chime,
-  and as notifications on your phone. On iPhone, notifications only work once the app is on your home screen,
-  and only while it's open or recently used.
-- **Live bus tracking (optional):** follows the exact bus you're catching using the government's Bus Open
-  Data Service: *3 stops away · 2 min late · due 18:22*, plus a pulsing 🚌 on the map.
-  Setup takes about 10 minutes; see [`worker/README.md`](worker/README.md).
-- The sky changes with the time of day (day, dusk, night).
-- It refreshes every minute and again when you reopen it. If GPS is off, type a starting place instead.
+  or has left your stop early. You choose the threshold (1–10 min).
+- **Lock-screen alerts:** once the Worker is set up, bus alerts arrive as iPhone notifications even
+  with the app closed. Setup is in [`worker/README.md`](worker/README.md).
 
 The journey planner needs no API key or account. Data comes from [Transitous](https://transitous.org), a free
 open journey planner that uses UK bus open data and National Rail timetables. A journey is marked
@@ -54,8 +49,9 @@ Shortcuts can send your location straight to the app, so it won't ask for locati
 | `style.css` | Look, animations, light and dark mode |
 | `app.js` | Location, journey fetching, countdowns, map |
 | `live.js` | Live bus maths: match your bus, work out delay, stops away and arrival |
-| `worker/` | Cloudflare Worker that keeps your BODS key secret, plus setup guide |
-| `tests/` | Run `node --test tests/*.test.js tests/*.test.mjs` |
+| `worker/` | Cloudflare Worker: live bus proxy and lock-screen alerts, plus setup guide |
+| `tests/` | Run `npm install` once, then `npm test` |
+| `ios-live-activity/` | **Dormant** plan for a native iPhone app with a Live Activity; see its `HANDOVER.md` |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Home-screen app support and offline shell |
 
 To change home, tap **change** next to *To* in the app.

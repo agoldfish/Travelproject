@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import worker, { parseSiriVm } from '../worker/bods-proxy.js';
+import worker from '../worker/src/index.js';
+import { parseSiriVm } from '../worker/src/siri.js';
 
 const xml = fs.readFileSync(new URL('./fixtures/siri-vm-sample.xml', import.meta.url), 'utf8');
 const ORIGIN = 'https://agoldfish.github.io';
@@ -72,5 +73,5 @@ test('never leaks the key in responses', async () => {
   const text = await (await get(`/vehicles?line=Y1&bbox=${BBOX}`)).text();
   assert.ok(!text.includes('test-key'));
   const health = await (await get('/health')).json();
-  assert.deepEqual(health, { ok: true, keyConfigured: true });
+  assert.deepEqual(health, { ok: true, keyConfigured: true, pushConfigured: false });
 });

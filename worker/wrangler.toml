@@ -1,8 +1,18 @@
 # Optional: deploy from the command line with `npx wrangler deploy` (run inside this folder).
-# Then set the key with `npx wrangler secret put BODS_API_KEY`.
+# Set secrets with `npx wrangler secret put BODS_API_KEY` and `npx wrangler secret put VAPID_PRIVATE_KEY`.
 name = "hometime-bods"
-main = "bods-proxy.js"
+main = "src/index.js"
 compatibility_date = "2026-01-01"
 
 [vars]
 ALLOWED_ORIGINS = "https://agoldfish.github.io"
+# VAPID_PUBLIC_KEY = "paste the public key from make-vapid-keys.mjs"
+# VAPID_SUBJECT = "mailto:you@example.com"
+
+# Push subscriptions. Create with `npx wrangler kv namespace create SUBS` and paste the id here.
+# [[kv_namespaces]]
+# binding = "SUBS"
+# id = ""
+
+[triggers]
+crons = ["* * * * *"]

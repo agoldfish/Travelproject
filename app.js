@@ -14,6 +14,7 @@
   const ALERT_PREF_KEY = 'hometime.alerts';
   const ALERTED_KEY = 'hometime.alerted';
   const WATCH_KEY = 'hometime.watch';
+  const PUSH_SYNC_KEY = 'hometime.pushSync';
   const STORE_KEY = 'hometime.from';
   const HOME_KEY = 'hometime.home';
 
@@ -520,6 +521,7 @@
       }));
       updateLiveUI();
       checkAlerts();
+      syncPush();
       const list = visible();
       if (window.L && list[state.selected]) drawMap(list[state.selected], true);
     } finally { liveBusy = false; }
@@ -577,6 +579,7 @@
     if (watched.has(k) && !alertPrefs.on) setAlertsOn(true);
     updateBells();
     checkAlerts();
+    syncPush();
   }
 
   function updateBells() {
@@ -606,14 +609,19 @@
     return null;
   }
 
+  /** Your next journey plus any you've tapped 🔔 on. */
+  function watchedJourneys(list = visible()) {
+    if (!list.length) return [];
+    const next = nextJourney(list);
+    return list.filter((it) => it === next || watched.has(itKey(it)));
+  }
+
   function checkAlerts() {
     if (!alertPrefs.on || !HOME || atHome()) return;
     const list = visible();
     if (!list.length) return;
-    const next = nextJourney(list);
     const now = Date.now();
-    for (const it of list) {
-      if (it !== next && !watched.has(itKey(it))) continue;
+    for (const it of watchedJourneys(list)) {
       it.legs.forEach((l) => {
         if (!isTransit(l.mode)) return;
         if (+new Date(l.from.scheduledDeparture || l.startTime) < now - 2 * 60e3) return; // already on it
@@ -636,19 +644,14 @@
     const stop = l.from.name;
     const due = cur.eta ? fmtTime(new Date(cur.eta)) : '';
     const first = it.legs.find((x) => isTransit(x.mode)) === l;
-    const leaveBy = first && cur.delay > 0 ? ` You can leave at ${fmtTime(new Date(+new Date(it.startTime) + Math.max(0, cur.delay - 1) * 60e3))}.` : '';
+    const leaveAt = first && cur.delay > 0 ? fmtTime(new Date(+new Date(it.startTime) + Math.max(0, cur.delay - 1) * 60e3)) : '';
     const later = list.find((x) => x !== it && +new Date(x.startTime) > Date.now() && !busGone(x));
-    const alt = later ? ` Next option: leave ${fmtTime(new Date(later.startTime))}, home by ${fmtTime(new Date(later.endTime))}.` : '';
-    const msg = {
-      late: ['🐢', `${at} ${name} is ${cur.delay} min late`, `Now due at ${stop} at ${due}.${leaveBy}`],
-      later: ['🐌', `${at} ${name} is now ${cur.delay} min late`, `Now due at ${stop} at ${due}.${leaveBy}`],
-      early: ['⚡', `${at} ${name} is ${-cur.delay} min early!`, `Now due at ${stop} at ${due}. Don't miss it!`],
-      recovered: ['✅', `${at} ${name} is back on time`, `Due at ${stop} at ${due || at}.`],
-      gone: ['😬', `${at} ${name} has already left ${stop}`, `It left early.${alt}`],
-      cancelled: ['❌', `${at} ${name} is cancelled`, `It was due from ${stop}.${alt}`],
-    }[type];
+    const alt = later ? `leave ${fmtTime(new Date(later.startTime))}, home by ${fmtTime(new Date(later.endTime))}` : '';
+    const m = HomeLive.alertMessage(type, cur.delay, { name, at, stop, due, leaveAt, alt });
+    const msg = [m.icon, m.title, m.body];
     showBanner(type, ...msg);
-    notify(`${msg[0]} ${msg[1]}`, msg[2], `${l.tripId}|${l.from.stopId}`);
+    // With lock-screen alerts on, the server sends bus notifications; don't double up.
+    if (!(push.active && isBusLeg(l))) notify(`${msg[0]} ${msg[1]}`, msg[2], `${l.tripId}|${l.from.stopId}`);
     if (alertPrefs.sound) chime(type === 'recovered' ? 'good' : 'bad');
     try { navigator.vibrate?.(type === 'recovered' ? 80 : [120, 60, 120]); } catch { /* ignore */ }
   }
@@ -701,6 +704,8 @@
       }
     }
     renderAlertControls();
+    // Lock-screen setup runs in the background; in-app alerts never wait for it.
+    if (on) enablePush(); else disablePush();
     updateBells();
     if (on) { checkAlerts(); trackLive(); }
   }
@@ -713,7 +718,10 @@
     $('alertMin').value = String(alertPrefs.min);
     $('alertMin').disabled = !alertPrefs.on;
     const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+    $('pushTest').hidden = !(alertPrefs.on && push.active);
     $('alertHint').textContent = !alertPrefs.on ? 'Get told when your bus or train is late, early or cancelled.'
+      : push.active ? '🔒 Bus alerts reach your lock screen, even with the app closed. Train alerts need the app open.'
+      : push.error ? `Alerts show here while the app is open. (Lock-screen alerts: ${push.error})`
       : perm === 'granted' ? 'Alerts appear here and as phone notifications.'
       : perm === 'denied' ? 'Notifications are blocked, so alerts show here while the app is open.'
       : 'Alerts show here while the app is open. On iPhone, add the app to your home screen for notifications.';
@@ -721,8 +729,92 @@
 
   function setupAlertControls() {
     $('alertToggle').addEventListener('click', () => setAlertsOn(!alertPrefs.on));
-    $('alertMin').addEventListener('change', (e) => { alertPrefs.min = +e.target.value; writeJSON(ALERT_PREF_KEY, alertPrefs); checkAlerts(); });
+    $('alertMin').addEventListener('change', (e) => { alertPrefs.min = +e.target.value; writeJSON(ALERT_PREF_KEY, alertPrefs); checkAlerts(); syncPush(); });
+    $('pushTest').addEventListener('click', sendTestPush);
     renderAlertControls();
+    if (alertPrefs.on) enablePush(); // quietly reconnect lock-screen alerts after a restart
+  }
+
+  /* ---------------- lock-screen alerts (Web Push via your worker) ---------------- */
+  const push = { active: false, sub: null, error: '' };
+  let lastSync = readJSON(PUSH_SYNC_KEY, '');
+  const proxyBase = () => proxyUrl.replace(/\/$/, '');
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && window.isSecureContext;
+  const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+  async function postJSON(url, body) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function enablePush() {
+    push.error = '';
+    try {
+      if (!proxyUrl) { push.error = 'set up the live bus worker first'; return; }
+      if (!pushSupported()) { push.error = /iPhone|iPad/.test(navigator.userAgent) ? 'add the app to your home screen first' : 'not supported in this browser'; return; }
+      if (Notification.permission !== 'granted') { push.error = 'notifications are not allowed'; return; }
+      // getRegistration() answers straight away; .ready would wait forever if none was registered.
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) { push.error = 'open the app from your home screen'; return; }
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        const { publicKey } = await getJSON(`${proxyBase()}/push/key`);
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(publicKey) });
+      }
+      push.sub = sub.toJSON();
+      push.active = true;
+      await syncPush(true);
+    } catch (e) {
+      push.active = false;
+      push.error = /501/.test(e.message) ? 'not set up on the worker yet' : 'could not connect';
+    } finally { renderAlertControls(); }
+  }
+
+  async function disablePush() {
+    try {
+      const reg = pushSupported() && (await navigator.serviceWorker.getRegistration());
+      const sub = reg && (await reg.pushManager.getSubscription());
+      if (sub) {
+        await postJSON(`${proxyBase()}/push/unsubscribe`, { endpoint: sub.endpoint }).catch(() => {});
+        await sub.unsubscribe();
+      }
+    } catch { /* ignore */ }
+    push.active = false; push.sub = null;
+    lastSync = ''; writeJSON(PUSH_SYNC_KEY, '');
+  }
+
+  /** Tell the worker which buses to watch. Only sends when the list changes (storage writes are limited). */
+  let syncing = false;
+  async function syncPush(force = false) {
+    if (!push.active || syncing || !HOME) return;
+    syncing = true;
+    try {
+      const now = Date.now();
+      const legs = [];
+      for (const it of watchedJourneys()) {
+        for (const l of it.legs) {
+          if (!isBusLeg(l)) continue;
+          const sched = +new Date(l.from.scheduledDeparture || l.startTime);
+          if (sched < now - 2 * 60e3 || sched > now + 3 * 3600e3) continue;
+          try {
+            const profile = await getProfile(l);
+            const boardIdx = HomeLive.boardingIndex(profile, l);
+            legs.push({ key: liveKey(l), line: l.routeShortName, name: `${legName(l)} ${modeInfo(l.mode).label.toLowerCase()}`, stop: l.from.name, at: fmtTime(new Date(sched)), profile: HomeLive.compactProfile(profile, boardIdx) });
+          } catch { /* skip this leg */ }
+        }
+      }
+      const sig = JSON.stringify([push.sub.endpoint, alertPrefs.min, legs.map((l) => l.key).sort()]);
+      if (!force && sig === lastSync) return;
+      await postJSON(`${proxyBase()}/push/subscribe`, { subscription: push.sub, legs: legs.slice(0, 6), min: alertPrefs.min });
+      lastSync = sig; writeJSON(PUSH_SYNC_KEY, sig);
+    } catch { /* try again on the next refresh */ } finally { syncing = false; }
+  }
+
+  async function sendTestPush() {
+    $('pushTest').disabled = true;
+    try { await postJSON(`${proxyBase()}/push/test`, { endpoint: push.sub.endpoint }); status('Test alert sent. Check your lock screen 🔒'); }
+    catch { status('Could not send a test alert', true); }
+    finally { $('pushTest').disabled = false; }
   }
 
   function promptForHome() {

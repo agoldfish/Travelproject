@@ -51,12 +51,21 @@
   function buildProfile(tripLeg, planLeg) {
     const g = tripLeg.legGeometry;
     const pts = decodePolyline(g.points, g.precision ?? 6);
+    const raw = [tripLeg.from, ...(tripLeg.intermediateStops || []), tripLeg.to].map((s) => ({
+      name: s.name, stopId: s.stopId, lat: s.lat, lon: s.lon,
+      sched: ms(s.scheduledDeparture) || ms(s.scheduledArrival) || ms(s.departure) || ms(s.arrival),
+    }));
+    const profile = profileFromPoints(pts, raw);
+    return planLeg ? trimToRun(profile, planLeg) : profile;
+  }
+
+  /** Route profile from a list of [lat, lon] points and stops ({ name, stopId, lat, lon, sched }). */
+  function profileFromPoints(pts, raw) {
     const proj = projector(pts[0][0]);
     const xy = pts.map(([la, lo]) => proj(la, lo));
     const cum = [0];
     for (let i = 1; i < xy.length; i++) cum.push(cum[i - 1] + Math.hypot(xy[i][0] - xy[i - 1][0], xy[i][1] - xy[i - 1][1]));
 
-    const raw = [tripLeg.from, ...(tripLeg.intermediateStops || []), tripLeg.to];
     const stops = [];
     let seg = 0;
     for (const s of raw) {
@@ -86,12 +95,41 @@
         stopId: s.stopId,
         lat: s.lat,
         lon: s.lon,
-        sched: ms(s.scheduledDeparture) || ms(s.scheduledArrival) || ms(s.departure) || ms(s.arrival),
+        sched: s.sched,
         dist: stops.length ? Math.max(dist, stops[stops.length - 1].dist) : dist,
       });
     }
-    const profile = { pts, xy, cum, proj, stops, length: cum[cum.length - 1] };
-    return planLeg ? trimToRun(profile, planLeg) : profile;
+    return { pts, xy, cum, proj, stops, startSched: stops.length ? stops[0].sched : NaN, length: cum[cum.length - 1] };
+  }
+
+  /**
+   * A small copy of a profile, enough to track the bus up to your stop (and a little past it),
+   * so the server can do the same maths without downloading the whole trip again.
+   */
+  function compactProfile(profile, boardIdx) {
+    const board = profile.stops[boardIdx];
+    const lo = board.dist - 30000, hi = board.dist + 1500;
+    const pts = [];
+    let last = -Infinity;
+    profile.pts.forEach((p, i) => {
+      const d = profile.cum[i];
+      if (d < lo || d > hi) return;
+      if (d - last >= 25 || i === profile.pts.length - 1) { pts.push([+p[0].toFixed(5), +p[1].toFixed(5)]); last = d; }
+    });
+    const stops = profile.stops
+      .map((s, i) => ({ s, i }))
+      .filter(({ s, i }) => i <= boardIdx + 3 && s.dist >= lo && s.dist <= hi)
+      .map(({ s }) => ({ name: s.name, stopId: s.stopId, lat: +s.lat.toFixed(5), lon: +s.lon.toFixed(5), sched: s.sched }));
+    return { pts, stops, startSched: profile.startSched, boardStopId: board.stopId, boardSched: board.sched };
+  }
+
+  /** Rebuild a profile from compactProfile() output. Returns { profile, boardIdx }. */
+  function restoreProfile(c) {
+    const profile = profileFromPoints(c.pts, c.stops);
+    profile.startSched = c.startSched;
+    let boardIdx = profile.stops.findIndex((s) => s.stopId === c.boardStopId && s.sched === c.boardSched);
+    if (boardIdx < 0) boardIdx = profile.stops.findIndex((s) => s.sched === c.boardSched);
+    return { profile, boardIdx: Math.max(0, boardIdx) };
   }
 
   /**
@@ -113,7 +151,7 @@
     let b = find(planLeg.tripTo, a + 1);
     if (b < 0) b = st.length - 1;
     if (a === 0 && b === st.length - 1) return profile;
-    return { ...profile, stops: st.slice(a, b + 1) };
+    return { ...profile, stops: st.slice(a, b + 1), startSched: st[a].sched };
   }
 
   /** Timetabled time at a distance along the route (interpolated between stops). */
@@ -184,7 +222,7 @@
   /** Pick the BODS vehicle running this exact journey (same route + same start time). */
   function matchVehicle(vehicles, leg, profile) {
     const line = String(leg.routeShortName || '').toLowerCase();
-    const start = profile.stops[0].sched;
+    const start = profile.startSched ?? profile.stops[0].sched;
     let best = null;
     for (const v of vehicles || []) {
       if (String(v.line || '').toLowerCase() !== line && String(v.lineRef || '').toLowerCase() !== line) continue;
@@ -210,7 +248,7 @@
 
     let delaySec = (seen - schedAt(profile, where.d)) / 1000;
     // Still waiting at the first stop before its start time: it isn't late, it's early.
-    if (where.d <= profile.stops[0].dist + 30 && seen < profile.stops[0].sched) delaySec = 0;
+    if (profile.stops[0].sched === profile.startSched && where.d <= profile.stops[0].dist + 30 && seen < profile.stops[0].sched) delaySec = 0;
     // If the report is old the bus has kept moving; we can't see that, so only count delay we know.
     const etaMs = Math.max(now, board.sched + Math.max(delaySec, -120) * 1000);
     const stopsAway = profile.stops.slice(0, boardIdx + 1).filter((s) => s.dist > where.d + 15).length;
@@ -268,7 +306,26 @@
     return { alert: null, memory: prev };
   }
 
-  const api = { decideAlert, decodePolyline, buildProfile, schedAt, distAtTime, locateOnRoute, boardingIndex, matchVehicle, liveStatus, searchBox, unionBox };
+  /**
+   * Wording for an alert, shared by the app and the server.
+   *   info: { name: 'Y1 bus', at: '18:15', stop, due: '18:19', leaveAt?: '18:12', alt?: 'leave 18:30, home by 19:05' }
+   */
+  function alertMessage(type, delay, info) {
+    const leave = info.leaveAt ? ` You can leave at ${info.leaveAt}.` : '';
+    const alt = info.alt ? ` Next option: ${info.alt}.` : '';
+    const t = `${info.at} ${info.name}`;
+    switch (type) {
+      case 'late': return { icon: '🐢', title: `${t} is ${delay} min late`, body: `Now due at ${info.stop} at ${info.due}.${leave}` };
+      case 'later': return { icon: '🐌', title: `${t} is now ${delay} min late`, body: `Now due at ${info.stop} at ${info.due}.${leave}` };
+      case 'early': return { icon: '⚡', title: `${t} is ${-delay} min early!`, body: `Now due at ${info.stop} at ${info.due}. Don't miss it!` };
+      case 'recovered': return { icon: '✅', title: `${t} is back on time`, body: `Due at ${info.stop} at ${info.due || info.at}.` };
+      case 'gone': return { icon: '😬', title: `${t} has already left ${info.stop}`, body: `It left early.${alt}` };
+      case 'cancelled': return { icon: '❌', title: `${t} is cancelled`, body: `It was due from ${info.stop}.${alt}` };
+      default: return null;
+    }
+  }
+
+  const api = { alertMessage, compactProfile, restoreProfile, profileFromPoints, decideAlert, decodePolyline, buildProfile, schedAt, distAtTime, locateOnRoute, boardingIndex, matchVehicle, liveStatus, searchBox, unionBox };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.HomeLive = api;
 })(typeof self !== 'undefined' ? self : this);

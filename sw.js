@@ -1,5 +1,5 @@
 // Caches the app shell so it opens instantly; journey data always comes from the network.
-const CACHE = 'hometime-v3';
+const CACHE = 'hometime-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'live.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png'];
 
 self.addEventListener('install', (e) => {
@@ -27,5 +27,19 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     const open = list.find((c) => 'focus' in c);
     return open ? open.focus() : self.clients.openWindow('./');
+  }));
+});
+
+// Lock-screen delay alerts sent by your worker (see worker/README.md).
+self.addEventListener('push', (e) => {
+  let m;
+  try { m = e.data.json(); } catch { m = { title: 'Home Time', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Home Time', {
+    body: m.body || '',
+    tag: m.tag,
+    renotify: true,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    data: m,
   }));
 });

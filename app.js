@@ -365,6 +365,8 @@
     document.querySelectorAll('.card').forEach((el) => {
       const s = +el.dataset.start + liveShift(el.dataset.bus), e = +el.dataset.end + liveShift(el.dataset.bus);
       el.querySelector('.js-leave').textContent = state.live.get(el.dataset.bus)?.state === 'gone' && Date.now() < s ? 'Bus has gone 😬' : leaveText(new Date(s));
+      const homeBy = el.querySelector('.arrive .t');
+      if (homeBy) homeBy.textContent = fmtTime(new Date(e));
       const dot = el.querySelector('.progress-dot');
       const now = Date.now();
       if (now > s && now < e) { dot.hidden = false; dot.style.left = `calc(${((now - s) / (e - s)) * 100}% - 2px)`; }
@@ -379,7 +381,7 @@
     const firstT = next.legs.find((l) => isTransit(l.mode));
     const em = firstT ? modeInfo(firstT.mode).e : '🚶';
     const ls = firstT && isBusLeg(firstT) ? state.live.get(liveKey(firstT)) : null;
-    const liveTxt = ls?.state === 'coming' ? (ls.delayMin > 0 ? ` · running ${ls.delayMin} min late` : ' · on time') : '';
+    const liveTxt = ls?.state === 'coming' ? (ls.delayMin > 0 ? ` · ${ls.delayMin} min late` : ' · on time') : '';
     const catchTxt = firstT ? `for the ${legName(firstT)} ${modeInfo(firstT.mode).label.toLowerCase()}${liveTxt}` : 'walk home';
     $('driver').textContent = em;
 

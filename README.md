@@ -51,8 +51,12 @@ Shortcuts can send your location straight to the app, so it won't ask for locati
 | `live.js` | Live bus maths: match your bus, work out delay, stops away and arrival |
 | `worker/` | Cloudflare Worker: live bus proxy and lock-screen alerts, plus setup guide |
 | `tests/` | Run `npm install` once, then `npm test` |
-| `ios-live-activity/` | **Dormant** plan for a native iPhone app with a Live Activity; see its `HANDOVER.md` |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Home-screen app support and offline shell |
 
 To change home, tap **change** next to *To* in the app.
 You can also open the app with `?home=LAT,LON` in the link, which saves that point on the device.
+
+## Native iPhone app (dormant)
+A native version showing the journey as a Live Activity (lock screen and Dynamic Island) is planned in
+[`agoldfish/iOS-thing`](https://github.com/agoldfish/iOS-thing), in the folder `home-time-live-activity/`.
+Start with its `HANDOVER.md`.

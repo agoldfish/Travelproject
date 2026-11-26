@@ -160,6 +160,41 @@ main { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(env(safe-area-i
 .suggestions li small { color: var(--muted); display: block; }
 .suggestions li:hover { background: var(--line); }
 
+/* ---------- Alerts ---------- */
+.alert-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.alert-toggle {
+  border: 2px solid var(--line); background: var(--card); color: var(--ink); border-radius: 99px;
+  padding: 8px 14px; font-weight: 800;
+}
+.alert-toggle.on { background: var(--accent-2); border-color: var(--accent-2); color: #23233f; }
+.alert-min { font-size: 14px; font-weight: 700; color: var(--muted); }
+.alert-min select {
+  font: inherit; font-weight: 800; color: var(--ink); background: var(--card); border: 2px solid var(--line);
+  border-radius: 10px; padding: 4px 6px;
+}
+.alert-min select:disabled { opacity: .5; }
+.alert-hint { flex-basis: 100%; color: var(--muted); font-size: 12.5px; }
+.alerts { display: grid; gap: 10px; margin: 12px 0 4px; }
+.alerts:empty { display: none; }
+.alert {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 12px 12px 12px 14px;
+  border-radius: 18px; background: var(--card); box-shadow: var(--shadow); border-left: 6px solid var(--accent);
+  animation: alert-in .5s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.alert.a-recovered { border-left-color: var(--live); }
+.alert.a-early { border-left-color: var(--accent-2); }
+.alert .a-icon { font-size: 28px; line-height: 1; animation: wiggle 1.2s ease-in-out 2; }
+.alert .a-text b { display: block; font-weight: 800; }
+.alert .a-text small { display: block; color: var(--muted); font-weight: 700; margin-top: 2px; }
+.alert .a-time { font-size: 11px; opacity: .8; }
+.alert .a-x { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 0 2px; }
+.bell {
+  align-self: flex-start; border: 0; background: var(--line); border-radius: 50%; width: 34px; height: 34px;
+  font-size: 16px; line-height: 1; filter: grayscale(1); opacity: .55; flex-shrink: 0; margin-left: auto;
+}
+.bell.on { background: var(--accent-2); filter: none; opacity: 1; animation: wiggle 2.5s ease-in-out infinite; }
+@keyframes alert-in { from { opacity: 0; transform: translateY(-10px) scale(.96); } }
+
 .tabs { display: flex; gap: 8px; margin: 16px 0 10px; overflow-x: auto; scrollbar-width: none; }
 .tab {
   border: 2px solid var(--line); background: var(--card); color: var(--ink); border-radius: 99px;

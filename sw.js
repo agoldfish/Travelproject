@@ -1,5 +1,5 @@
 // Caches the app shell so it opens instantly; journey data always comes from the network.
-const CACHE = 'hometime-v2';
+const CACHE = 'hometime-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'live.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png'];
 
 self.addEventListener('install', (e) => {
@@ -19,4 +19,13 @@ self.addEventListener('fetch', (e) => {
       return r;
     }).catch(() => caches.match(e.request).then((r) => r || caches.match('index.html')))
   );
+});
+
+// Tapping a delay alert opens (or focuses) the app.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => 'focus' in c);
+    return open ? open.focus() : self.clients.openWindow('./');
+  }));
 });

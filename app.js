@@ -11,6 +11,9 @@
   // Leave empty to turn live bus tracking off. Opening the app once with ?proxy=URL also works.
   const BODS_PROXY = '';
   const PROXY_KEY = 'hometime.proxy';
+  const ALERT_PREF_KEY = 'hometime.alerts';
+  const ALERTED_KEY = 'hometime.alerted';
+  const WATCH_KEY = 'hometime.watch';
   const STORE_KEY = 'hometime.from';
   const HOME_KEY = 'hometime.home';
 
@@ -285,10 +288,13 @@
     ol.querySelectorAll('.card').forEach((el, i) => {
       el.style.animationDelay = `${i * 60}ms`;
       el.addEventListener('click', () => { state.selected = i; markSelected(); drawMap(list[i]); });
+      el.querySelector('.bell').addEventListener('click', (e) => { e.stopPropagation(); toggleWatch(list[i]); });
     });
     markSelected();
     drawMap(list[state.selected]);
     updateLiveUI();
+    updateBells();
+    checkAlerts();
     tick();
     trackLive();
   }
@@ -335,6 +341,7 @@
     return `<li class="card" data-start="${start.getTime()}" data-end="${end.getTime()}" data-bus="${fb ? esc(liveKey(fb)) : ''}">
       <div class="card-top">
         <div class="leave"><span class="js-leave">${leaveText(start)}</span><small>Leave ${fmtTime(start)} · ${fmtDur(total)} · ${it.transfers} change${it.transfers === 1 ? '' : 's'}</small></div>
+        <button class="bell" data-watch="${esc(itKey(it))}" aria-label="Alert me about delays on this journey">🔔</button>
         <div class="arrive"><small>Home by</small><span class="t">${fmtTime(end)}</span>
           <small><span class="chip js-chip"><span class="dot ${live ? 'live' : 'sched'}"></span>${cancelled ? 'disrupted' : live ? 'live' : 'timetable'}</span></small></div>
       </div>
@@ -364,9 +371,7 @@
     });
 
     if (!list.length || !state.from || !HOME || atHome()) return;
-    const shiftOf = (it) => { const b = firstBus(it); return b ? liveShift(liveKey(b)) : 0; };
-    const gone = (it) => { const b = firstBus(it); return b && state.live.get(liveKey(b))?.state === 'gone'; };
-    const next = list.find((it) => !gone(it) && minsUntil(new Date(+new Date(it.startTime) + shiftOf(it))) > -0.5) || list[0];
+    const next = nextJourney(list);
     const sh = shiftOf(next);
     const start = new Date(+new Date(next.startTime) + sh), end = new Date(+new Date(next.endTime) + sh);
     const m = minsUntil(start);
@@ -387,6 +392,13 @@
       setHero('Next trip', fmtTime(start), catchTxt, 0);
     }
     $('homeBy').innerHTML = `<span>🏡 Home by ${fmtTime(end)}</span>`;
+  }
+
+  const shiftOf = (it) => { const b = firstBus(it); return b ? liveShift(liveKey(b)) : 0; };
+  const busGone = (it) => { const b = firstBus(it); return b && state.live.get(liveKey(b))?.state === 'gone'; };
+  /** The journey the countdown is for: the first one you can still make. */
+  function nextJourney(list = visible()) {
+    return list.find((it) => !busGone(it) && minsUntil(new Date(+new Date(it.startTime) + shiftOf(it))) > -0.5) || list[0];
   }
 
   /* ---------------- sky ---------------- */
@@ -456,7 +468,7 @@
 
   let liveBusy = false;
   async function trackLive() {
-    if (!proxyUrl || liveBusy || document.hidden || !HOME) return;
+    if (!proxyUrl || liveBusy || !HOME || (document.hidden && !alertPrefs.on)) return;
     liveBusy = true;
     try {
       const now = Date.now();
@@ -507,6 +519,7 @@
         }
       }));
       updateLiveUI();
+      checkAlerts();
       const list = visible();
       if (window.L && list[state.selected]) drawMap(list[state.selected], true);
     } finally { liveBusy = false; }
@@ -549,6 +562,169 @@
     });
   }
 
+  /* ---------------- delay alerts ---------------- */
+  const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+  const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
+  const alertPrefs = { on: false, min: 2, sound: true, ...readJSON(ALERT_PREF_KEY, {}) };
+  let alerted = readJSON(ALERTED_KEY, {});   // leg key → { type, delay, at }
+  let watched = new Set(readJSON(WATCH_KEY, []));
+  const itKey = (it) => it.legs.filter((l) => isTransit(l.mode)).map((l) => l.tripId).join('+') || `walk${it.startTime}`;
+
+  function toggleWatch(it) {
+    const k = itKey(it);
+    if (watched.has(k)) watched.delete(k); else watched.add(k);
+    writeJSON(WATCH_KEY, [...watched]);
+    if (watched.has(k) && !alertPrefs.on) setAlertsOn(true);
+    updateBells();
+    checkAlerts();
+  }
+
+  function updateBells() {
+    const next = visible().length ? itKey(nextJourney()) : null;
+    document.querySelectorAll('.bell').forEach((b) => {
+      const auto = b.dataset.watch === next;
+      const on = alertPrefs.on && (auto || watched.has(b.dataset.watch));
+      b.classList.toggle('on', on);
+      b.title = !alertPrefs.on ? 'Turn on delay alerts' : auto ? 'Your next journey is always watched' : on ? 'Watching for delays: tap to stop' : 'Tap to watch for delays';
+    });
+  }
+
+  /** Current delay picture for a leg: live bus tracking first, then the planner's real-time data. */
+  function legNow(l) {
+    if (l.cancelled) return { state: 'cancelled' };
+    const sched = +new Date(l.from.scheduledDeparture || l.startTime);
+    if (isBusLeg(l)) {
+      const ls = state.live.get(liveKey(l));
+      // "Gone" only matters if it left before you'd expect to be on it.
+      if (ls?.state === 'gone') return Date.now() < sched - 60e3 ? { state: 'gone' } : null;
+      if (ls?.state === 'coming') return { state: 'live', delay: ls.delayMin, eta: ls.eta };
+    }
+    if (l.realTime) {
+      const d = delayInfo(l.from, 'departure');
+      if (d != null) return { state: 'live', delay: d, eta: +new Date(l.startTime) };
+    }
+    return null;
+  }
+
+  function checkAlerts() {
+    if (!alertPrefs.on || !HOME || atHome()) return;
+    const list = visible();
+    if (!list.length) return;
+    const next = nextJourney(list);
+    const now = Date.now();
+    for (const it of list) {
+      if (it !== next && !watched.has(itKey(it))) continue;
+      it.legs.forEach((l) => {
+        if (!isTransit(l.mode)) return;
+        if (+new Date(l.from.scheduledDeparture || l.startTime) < now - 2 * 60e3) return; // already on it
+        const cur = legNow(l);
+        if (!cur) return;
+        const key = `${l.tripId}|${l.from.stopId}`;
+        const { alert, memory } = HomeLive.decideAlert(alerted[key] || null, cur, alertPrefs.min);
+        if (memory) alerted[key] = { ...memory, at: now };
+        if (alert) fireAlert(alert, l, cur, it, list);
+      });
+    }
+    // Forget alerts for journeys more than 6 hours old.
+    for (const [k, v] of Object.entries(alerted)) if (now - v.at > 6 * 3600e3) delete alerted[k];
+    writeJSON(ALERTED_KEY, alerted);
+  }
+
+  function fireAlert(type, l, cur, it, list) {
+    const name = `${legName(l)} ${modeInfo(l.mode).label.toLowerCase()}`;
+    const at = fmtTime(new Date(l.from.scheduledDeparture || l.startTime));
+    const stop = l.from.name;
+    const due = cur.eta ? fmtTime(new Date(cur.eta)) : '';
+    const first = it.legs.find((x) => isTransit(x.mode)) === l;
+    const leaveBy = first && cur.delay > 0 ? ` You can leave at ${fmtTime(new Date(+new Date(it.startTime) + Math.max(0, cur.delay - 1) * 60e3))}.` : '';
+    const later = list.find((x) => x !== it && +new Date(x.startTime) > Date.now() && !busGone(x));
+    const alt = later ? ` Next option: leave ${fmtTime(new Date(later.startTime))}, home by ${fmtTime(new Date(later.endTime))}.` : '';
+    const msg = {
+      late: ['🐢', `${at} ${name} is ${cur.delay} min late`, `Now due at ${stop} at ${due}.${leaveBy}`],
+      later: ['🐌', `${at} ${name} is now ${cur.delay} min late`, `Now due at ${stop} at ${due}.${leaveBy}`],
+      early: ['⚡', `${at} ${name} is ${-cur.delay} min early!`, `Now due at ${stop} at ${due}. Don't miss it!`],
+      recovered: ['✅', `${at} ${name} is back on time`, `Due at ${stop} at ${due || at}.`],
+      gone: ['😬', `${at} ${name} has already left ${stop}`, `It left early.${alt}`],
+      cancelled: ['❌', `${at} ${name} is cancelled`, `It was due from ${stop}.${alt}`],
+    }[type];
+    showBanner(type, ...msg);
+    notify(`${msg[0]} ${msg[1]}`, msg[2], `${l.tripId}|${l.from.stopId}`);
+    if (alertPrefs.sound) chime(type === 'recovered' ? 'good' : 'bad');
+    try { navigator.vibrate?.(type === 'recovered' ? 80 : [120, 60, 120]); } catch { /* ignore */ }
+  }
+
+  function showBanner(type, icon, title, body) {
+    const box = $('alerts');
+    const el = document.createElement('div');
+    el.className = `alert a-${type}`;
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `<span class="a-icon">${icon}</span><span class="a-text"><b>${esc(title)}</b><small>${esc(body)}</small><small class="a-time">${fmtTime(new Date())}</small></span><button class="a-x" aria-label="Dismiss">×</button>`;
+    el.querySelector('.a-x').addEventListener('click', () => el.remove());
+    box.prepend(el);
+    while (box.children.length > 3) box.lastElementChild.remove();
+  }
+
+  async function notify(title, body, tag) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const opts = { body, tag, renotify: true, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' };
+    try {
+      // Home-screen apps (iOS) must notify through the service worker.
+      const reg = await navigator.serviceWorker?.getRegistration?.();
+      if (reg) return void (await reg.showNotification(title, opts));
+    } catch { /* fall back below */ }
+    try { new Notification(title, opts); } catch { /* banner already shown */ }
+  }
+
+  let audio;
+  function chime(kind) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const notes = kind === 'good' ? [523, 784] : [659, 523];
+      notes.forEach((f, i) => {
+        const o = audio.createOscillator(), g = audio.createGain();
+        const t = audio.currentTime + i * 0.18;
+        o.frequency.value = f; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.4);
+      });
+    } catch { /* no sound */ }
+  }
+
+  async function setAlertsOn(on) {
+    alertPrefs.on = on;
+    writeJSON(ALERT_PREF_KEY, alertPrefs);
+    if (on) {
+      // Runs from a tap, which is when browsers allow sound and notification prompts.
+      try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume?.(); } catch { /* ignore */ }
+      if ('Notification' in window && Notification.permission === 'default') {
+        try { await Notification.requestPermission(); } catch { /* ignore */ }
+      }
+    }
+    renderAlertControls();
+    updateBells();
+    if (on) { checkAlerts(); trackLive(); }
+  }
+
+  function renderAlertControls() {
+    const btn = $('alertToggle');
+    btn.classList.toggle('on', alertPrefs.on);
+    btn.setAttribute('aria-pressed', String(alertPrefs.on));
+    btn.textContent = alertPrefs.on ? '🔔 Delay alerts on' : '🔕 Delay alerts off';
+    $('alertMin').value = String(alertPrefs.min);
+    $('alertMin').disabled = !alertPrefs.on;
+    const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+    $('alertHint').textContent = !alertPrefs.on ? 'Get told when your bus or train is late, early or cancelled.'
+      : perm === 'granted' ? 'Alerts appear here and as phone notifications.'
+      : perm === 'denied' ? 'Notifications are blocked, so alerts show here while the app is open.'
+      : 'Alerts show here while the app is open. On iPhone, add the app to your home screen for notifications.';
+  }
+
+  function setupAlertControls() {
+    $('alertToggle').addEventListener('click', () => setAlertsOn(!alertPrefs.on));
+    $('alertMin').addEventListener('change', (e) => { alertPrefs.min = +e.target.value; writeJSON(ALERT_PREF_KEY, alertPrefs); checkAlerts(); });
+    renderAlertControls();
+  }
+
   function promptForHome() {
     setHero("Where's home?", '🏡', 'Set it once below. It stays on this phone.');
     $('homeBy').innerHTML = '';
@@ -589,7 +765,8 @@
     }));
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { paintSky(); state.from?.source === 'gps' ? startFromGps() : refresh(); } });
     setInterval(tick, 1000);
-    setInterval(() => { paintSky(); if (!document.hidden) refresh(true); }, REFRESH_MS);
+    setInterval(() => { paintSky(); if (!document.hidden || alertPrefs.on) refresh(true); }, REFRESH_MS);
+    setupAlertControls();
 
     // ?proxy=URL remembers your live-bus worker on this device (?proxy=off forgets it).
     const pq = new URLSearchParams(location.search).get('proxy');

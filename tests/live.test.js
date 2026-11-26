@@ -124,3 +124,23 @@ test('search box covers the route before my stop and stays within the proxy limi
     assert.ok(st[i].lat >= b[0] && st[i].lat <= b[1] && st[i].lon >= b[2] && st[i].lon <= b[3], `stop ${i} outside box`);
   }
 });
+
+test('alerts: late, getting later, back on time, without nagging', () => {
+  const run = (seq, min = 2) => {
+    let mem = null; const out = [];
+    for (const cur of seq) { const r = L.decideAlert(mem, cur, min); mem = r.memory; out.push(r.alert); }
+    return out;
+  };
+  const live = (delay) => ({ state: 'live', delay });
+  assert.deepEqual(run([live(0), live(1), live(2), live(3), live(4), live(2), live(1), live(0)]),
+    [null, null, 'late', null, 'later', null, null, 'recovered']);
+  // Hovering around the threshold alerts once, not every time.
+  assert.deepEqual(run([live(2), live(1), live(2), live(1), live(2)]), ['late', null, null, null, null]);
+  assert.deepEqual(run([live(-3), live(-3), live(0)]), ['early', null, 'recovered']);
+  assert.deepEqual(run([live(5), { state: 'cancelled' }, live(0), { state: 'cancelled' }]), ['late', 'cancelled', null, null]);
+  assert.deepEqual(run([live(0), { state: 'gone' }, { state: 'gone' }]), [null, 'gone', null]);
+  // A higher threshold waits for bigger delays.
+  assert.deepEqual(run([live(3), live(5), live(6)], 5), [null, 'late', null]);
+  // Unknown delay never alerts.
+  assert.deepEqual(run([live(NaN), live(undefined)]), [null, null]);
+});

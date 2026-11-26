@@ -8,6 +8,11 @@ or open it from Siri with a Shortcut.
   A red marker moves along the ribbon while you're travelling.
 - Tabs show **✨ Best**, **🚌 Bus only** or **🚆 With train** journeys.
 - A map draws the selected route.
+- **Delay alerts:** tap *Delay alerts* and the app watches your next journey, plus any you tap 🔔 on.
+  It alerts you when a bus or train is late (and again if it gets later), early, back on time, cancelled,
+  or has left your stop early. You choose the threshold (1–10 min). Alerts appear as banners with a chime,
+  and as notifications on your phone. On iPhone, notifications only work once the app is on your home screen,
+  and only while it's open or recently used.
 - **Live bus tracking (optional):** follows the exact bus you're catching using the government's Bus Open
   Data Service: *3 stops away · 2 min late · due 18:22*, plus a pulsing 🚌 on the map.
   Setup takes about 10 minutes; see [`worker/README.md`](worker/README.md).

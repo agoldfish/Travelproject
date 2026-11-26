@@ -243,7 +243,32 @@
     return boxes.reduce((a, b) => [Math.min(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.max(a[3], b[3])]);
   }
 
-  const api = { decodePolyline, buildProfile, schedAt, distAtTime, locateOnRoute, boardingIndex, matchVehicle, liveStatus, searchBox, unionBox };
+  /**
+   * Should this change in a leg's status raise an alert?
+   *   prev: what we last alerted about ({ type, delay }) or null
+   *   cur:  { state: 'live' | 'gone' | 'cancelled', delay (minutes, + is late) }
+   *   min:  alert threshold in minutes
+   * Returns { alert: type | null, memory } — memory is what to remember for next time.
+   * Hysteresis stops a bus hovering around the threshold from alerting over and over.
+   */
+  function decideAlert(prev, cur, min = 2) {
+    const was = prev ? prev.type : 'ontime';
+    if (cur.state === 'cancelled') return was === 'cancelled' ? { alert: null, memory: prev } : { alert: 'cancelled', memory: { type: 'cancelled' } };
+    if (cur.state === 'gone') return was === 'gone' ? { alert: null, memory: prev } : { alert: 'gone', memory: { type: 'gone' } };
+    if (was === 'cancelled' || was === 'gone') return { alert: null, memory: prev };
+    const d = cur.delay;
+    if (!Number.isFinite(d)) return { alert: null, memory: prev };
+    if (d >= min) {
+      if (was !== 'late') return { alert: 'late', memory: { type: 'late', delay: d } };
+      if (d >= prev.delay + 2) return { alert: 'later', memory: { type: 'late', delay: d } };
+      return { alert: null, memory: prev };
+    }
+    if (d <= -min) return was === 'early' ? { alert: null, memory: prev } : { alert: 'early', memory: { type: 'early', delay: d } };
+    if ((was === 'late' || was === 'early') && Math.abs(d) <= Math.max(0, min - 2)) return { alert: 'recovered', memory: { type: 'ontime', delay: d } };
+    return { alert: null, memory: prev };
+  }
+
+  const api = { decideAlert, decodePolyline, buildProfile, schedAt, distAtTime, locateOnRoute, boardingIndex, matchVehicle, liveStatus, searchBox, unionBox };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.HomeLive = api;
 })(typeof self !== 'undefined' ? self : this);

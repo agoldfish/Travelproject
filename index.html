@@ -67,12 +67,27 @@
       <ul id="suggestions" class="suggestions"></ul>
     </form>
 
+    <section class="alert-bar">
+      <button id="alertToggle" class="alert-toggle" aria-pressed="false">🔕 Delay alerts off</button>
+      <label class="alert-min">for delays of
+        <select id="alertMin">
+          <option value="1">1+ min</option>
+          <option value="2">2+ min</option>
+          <option value="3">3+ min</option>
+          <option value="5">5+ min</option>
+          <option value="10">10+ min</option>
+        </select>
+      </label>
+      <small id="alertHint" class="alert-hint"></small>
+    </section>
+
     <nav class="tabs" role="tablist">
       <button class="tab active" data-filter="all" role="tab">✨ Best</button>
       <button class="tab" data-filter="bus" role="tab">🚌 Bus only</button>
       <button class="tab" data-filter="train" role="tab">🚆 With train</button>
     </nav>
 
+    <div id="alerts" class="alerts" aria-live="assertive"></div>
     <div id="status" class="status" role="status"></div>
     <ol id="journeys" class="journeys"></ol>
 

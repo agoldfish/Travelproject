@@ -86,6 +86,23 @@ test('loop route: the same street twice is resolved using the timetable', () => 
   assert.ok(late.d > profile.length - 500, `matched ${late.d} m along`);
 });
 
+test('a whole day of chained runs is cut down to the run in the journey plan', () => {
+  // Pretend the planner's run starts at stop 10 and ends at stop 40 of the fixture.
+  const planLeg = {
+    tripFrom: { stopId: leg.intermediateStops[9].stopId, name: st[10].name, scheduledDeparture: new Date(st[10].sched).toISOString() },
+    tripTo: { stopId: leg.intermediateStops[39].stopId, name: st[40].name, scheduledArrival: new Date(st[40].sched).toISOString() },
+  };
+  const run = L.buildProfile(leg, planLeg);
+  assert.equal(run.stops.length, 31);
+  assert.equal(run.stops[0].sched, st[10].sched);
+  assert.equal(run.stops[30].sched, st[40].sched);
+  // A bus whose run started at stop 10's time now matches.
+  const v = { line: 'Y1', originAimedDeparture: new Date(st[10].sched).toISOString(), vehicleRef: 'run' };
+  assert.equal(L.matchVehicle([v], myLeg, run).vehicleRef, 'run');
+  // Without plan info nothing is trimmed.
+  assert.equal(L.buildProfile(leg).stops.length, st.length);
+});
+
 test('matchVehicle picks the bus running this journey', () => {
   const start = st[0].sched;
   const iso = (t) => new Date(t).toISOString();

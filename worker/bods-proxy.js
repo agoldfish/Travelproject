@@ -18,6 +18,7 @@
 const BODS = 'https://data.bus-data.dft.gov.uk/api/v1/datafeed/';
 const CACHE_SECONDS = 10; // BODS updates roughly every 10–30 s
 const MAX_SPAN_DEG = 0.6; // biggest box we accept (~40 km), keeps responses small
+const MAX_AGE_MIN = 30;   // ignore reports older than this (BODS keeps some for hours)
 
 export default {
   async fetch(request, env, ctx) {
@@ -53,8 +54,10 @@ export default {
 
     let xml;
     try {
-      const upstream = await fetch(`${BODS}?boundingBox=${box.join(',')}&api_key=${encodeURIComponent(env.BODS_API_KEY)}`, {
-        headers: { Accept: 'application/xml' },
+      // BODS wants minLon,minLat,maxLon,maxLat (longitude first).
+      const [minLat, maxLat, minLon, maxLon] = box;
+      const upstream = await fetch(`${BODS}?boundingBox=${minLon},${minLat},${maxLon},${maxLat}&api_key=${encodeURIComponent(env.BODS_API_KEY)}`, {
+        headers: { Accept: 'text/xml, */*' }, // BODS answers 406 to application/xml
         cf: { cacheTtl: CACHE_SECONDS },
       });
       if (!upstream.ok) return json({ error: `BODS replied ${upstream.status}` }, 502, cors);
@@ -64,7 +67,8 @@ export default {
     }
 
     const want = line.toLowerCase();
-    const vehicles = parseSiriVm(xml).filter((v) => v.line.toLowerCase() === want);
+    const oldest = Date.now() - MAX_AGE_MIN * 60e3;
+    const vehicles = parseSiriVm(xml).filter((v) => v.line.toLowerCase() === want && !(Date.parse(v.recordedAt) < oldest));
     const res = json({ vehicles, fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': `public, max-age=${CACHE_SECONDS}` });
     ctx.waitUntil(cache.put(cacheKey, res.clone()));
     return withHeaders(res, cors);

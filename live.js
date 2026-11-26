@@ -48,7 +48,7 @@
    * Build a route profile from the first leg of a Transitous /trip response.
    * Stops get a distance along the route and a scheduled time.
    */
-  function buildProfile(tripLeg) {
+  function buildProfile(tripLeg, planLeg) {
     const g = tripLeg.legGeometry;
     const pts = decodePolyline(g.points, g.precision ?? 6);
     const proj = projector(pts[0][0]);
@@ -90,7 +90,30 @@
         dist: stops.length ? Math.max(dist, stops[stops.length - 1].dist) : dist,
       });
     }
-    return { pts, xy, cum, proj, stops, length: cum[cum.length - 1] };
+    const profile = { pts, xy, cum, proj, stops, length: cum[cum.length - 1] };
+    return planLeg ? trimToRun(profile, planLeg) : profile;
+  }
+
+  /**
+   * For some routes the planner's /trip answer chains a whole day of runs together.
+   * Keep only the run in the journey plan: from its first stop (tripFrom) to its last (tripTo).
+   */
+  function trimToRun(profile, planLeg) {
+    const st = profile.stops;
+    const find = (place, from = 0) => {
+      if (!place) return -1;
+      const t = ms(place.scheduledDeparture) || ms(place.scheduledArrival);
+      for (let i = from; i < st.length; i++) {
+        if (Math.abs(st[i].sched - t) <= 60e3 && (st[i].stopId === place.stopId || st[i].name === place.name)) return i;
+      }
+      return -1;
+    };
+    const a = find(planLeg.tripFrom);
+    if (a < 0) return profile;
+    let b = find(planLeg.tripTo, a + 1);
+    if (b < 0) b = st.length - 1;
+    if (a === 0 && b === st.length - 1) return profile;
+    return { ...profile, stops: st.slice(a, b + 1) };
   }
 
   /** Timetabled time at a distance along the route (interpolated between stops). */

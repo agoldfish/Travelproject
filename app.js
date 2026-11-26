@@ -444,9 +444,10 @@
   }
 
   const profiles = new Map(); // tripId → Promise<profile>
-  function getProfile(tripId) {
+  function getProfile(leg) {
+    const tripId = leg.tripId;
     if (!profiles.has(tripId)) {
-      const p = getJSON(`${API}/trip?tripId=${encodeURIComponent(tripId)}`).then((t) => HomeLive.buildProfile(t.legs.find((l) => l.mode !== 'WALK')));
+      const p = getJSON(`${API}/trip?tripId=${encodeURIComponent(tripId)}`).then((t) => HomeLive.buildProfile(t.legs.find((l) => l.mode !== 'WALK'), leg));
       p.catch(() => profiles.delete(tripId));
       profiles.set(tripId, p);
     }
@@ -470,7 +471,7 @@
         }
       }
       const jobs = (await Promise.allSettled(legs.map(async (l) => {
-        const profile = await getProfile(l.tripId);
+        const profile = await getProfile(l);
         const boardIdx = HomeLive.boardingIndex(profile, l);
         return { l, profile, boardIdx, box: HomeLive.searchBox(profile, boardIdx) };
       }))).filter((r) => r.status === 'fulfilled').map((r) => r.value);

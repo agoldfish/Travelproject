@@ -12,7 +12,9 @@ const ctx = { waitUntil: (p) => p };
 
 let calls = [];
 globalThis.caches = { default: { store: new Map(), async match(r) { return this.store.get(r.url)?.clone(); }, async put(r, res) { this.store.set(r.url, res); } } };
-globalThis.fetch = async (url) => { calls.push(String(url)); return new Response(xml, { status: 200 }); };
+// Pretend the sample was recorded just now, so the 30-minute age filter keeps it.
+const fresh = xml.replace(/2026-11-26T18:29:(\d\d)\+00:00/g, (_, s) => new Date(Date.now() - (60 - +s) * 1000).toISOString());
+globalThis.fetch = async (url) => { calls.push(String(url)); return new Response(fresh, { status: 200 }); };
 
 const get = (path, origin = ORIGIN) => worker.fetch(new Request(`https://w.example${path}`, { headers: origin ? { Origin: origin } : {} }), env, ctx);
 const BBOX = '51.40,51.60,-2.70,-2.40';
@@ -38,7 +40,7 @@ test('returns only the requested route, with CORS for the app', async () => {
   const body = await r.json();
   assert.deepEqual(body.vehicles.map((v) => v.vehicleRef), ['FBRI-37123']);
   assert.equal(calls.length, 1);
-  assert.match(calls[0], /boundingBox=51\.4,51\.6,-2\.7,-2\.4&api_key=test-key$/);
+  assert.match(calls[0], /boundingBox=-2\.7,51\.4,-2\.4,51\.6&api_key=test-key$/);
 });
 
 test('a second request within the cache time does not hit BODS again', async () => {
@@ -54,6 +56,15 @@ test('refuses other websites, bad routes and oversized boxes', async () => {
   assert.equal((await get(`/vehicles?line=Y1;drop&bbox=${BBOX}`)).status, 400);
   assert.equal((await get('/vehicles?line=Y1&bbox=50,53,-3,-1')).status, 400);
   assert.equal((await get('/vehicles?line=Y1&bbox=40,40.1,-3,-2.9')).status, 400);
+});
+
+test('drops reports older than 30 minutes', async () => {
+  caches.default.store.clear();
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => new Response(xml, { status: 200 }); // sample times are long past
+  const body = await (await get(`/vehicles?line=Y1&bbox=${BBOX}`)).json();
+  globalThis.fetch = saved;
+  assert.equal(body.vehicles.length, 0);
 });
 
 test('never leaks the key in responses', async () => {

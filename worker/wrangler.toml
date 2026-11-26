@@ -1,0 +1,8 @@
+# Optional: deploy from the command line with `npx wrangler deploy` (run inside this folder).
+# Then set the key with `npx wrangler secret put BODS_API_KEY`.
+name = "hometime-bods"
+main = "bods-proxy.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://agoldfish.github.io"

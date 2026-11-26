@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Siri xmlns="http://www.siri.org.uk/siri" version="2.0">
+  <ServiceDelivery>
+    <ResponseTimestamp>2026-11-26T18:30:05+00:00</ResponseTimestamp>
+    <VehicleMonitoringDelivery>
+      <VehicleActivity>
+        <RecordedAtTime>2026-11-26T18:29:50+00:00</RecordedAtTime>
+        <ValidUntilTime>2026-11-26T18:35:50+00:00</ValidUntilTime>
+        <MonitoredVehicleJourney>
+          <LineRef>y1</LineRef>
+          <DirectionRef>outbound</DirectionRef>
+          <FramedVehicleJourneyRef><DataFrameRef>2026-11-26</DataFrameRef><DatedVehicleJourneyRef>1815</DatedVehicleJourneyRef></FramedVehicleJourneyRef>
+          <PublishedLineName>Y1</PublishedLineName>
+          <OperatorRef>FBRI</OperatorRef>
+          <OriginRef>0100BRP90340</OriginRef>
+          <OriginName>The_Centre</OriginName>
+          <DestinationRef>0170SGB20000</DestinationRef>
+          <DestinationName>Yate &amp; Chipping Sodbury</DestinationName>
+          <OriginAimedDepartureTime>2026-11-26T18:15:00+00:00</OriginAimedDepartureTime>
+          <VehicleLocation><Longitude>-2.5531</Longitude><Latitude>51.4790</Latitude></VehicleLocation>
+          <Bearing>45.0</Bearing>
+          <BlockRef>5031</BlockRef>
+          <VehicleRef>FBRI-37123</VehicleRef>
+        </MonitoredVehicleJourney>
+      </VehicleActivity>
+      <VehicleActivity>
+        <RecordedAtTime>2026-11-26T18:29:20+00:00</RecordedAtTime>
+        <MonitoredVehicleJourney>
+          <LineRef>y1</LineRef>
+          <PublishedLineName>Y1</PublishedLineName>
+          <OperatorRef>FBRI</OperatorRef>
+          <OriginAimedDepartureTime>2026-11-26T18:15:00+00:00</OriginAimedDepartureTime>
+          <VehicleLocation><Longitude>-2.5600</Longitude><Latitude>51.4760</Latitude></VehicleLocation>
+          <VehicleRef>FBRI-37123</VehicleRef>
+        </MonitoredVehicleJourney>
+      </VehicleActivity>
+      <VehicleActivity>
+        <RecordedAtTime>2026-11-26T18:29:40+00:00</RecordedAtTime>
+        <MonitoredVehicleJourney>
+          <LineRef>m3x</LineRef>
+          <PublishedLineName>m3x</PublishedLineName>
+          <OperatorRef>FBRI</OperatorRef>
+          <OriginAimedDepartureTime>2026-11-26T18:10:00+00:00</OriginAimedDepartureTime>
+          <VehicleLocation><Longitude>-2.5000</Longitude><Latitude>51.5000</Latitude></VehicleLocation>
+          <VehicleRef>FBRI-1</VehicleRef>
+        </MonitoredVehicleJourney>
+      </VehicleActivity>
+      <VehicleActivity>
+        <MonitoredVehicleJourney><LineRef>Y2</LineRef><VehicleRef>no-location</VehicleRef></MonitoredVehicleJourney>
+      </VehicleActivity>
+    </VehicleMonitoringDelivery>
+  </ServiceDelivery>
+</Siri>

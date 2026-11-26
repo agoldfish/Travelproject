@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Home Time</title>
+  <meta name="description" content="Live bus and train times from wherever you are to home.">
+  <meta name="theme-color" content="#2b2d6e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Home Time">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="sky" class="sky">
+    <div class="celestial" id="celestial" aria-hidden="true"></div>
+    <div class="cloud c1" aria-hidden="true"></div>
+    <div class="cloud c2" aria-hidden="true"></div>
+    <div class="sky-inner">
+      <div class="title-row">
+        <h1>Home Time <span class="house" aria-hidden="true">🏡</span></h1>
+        <button id="refreshBtn" class="icon-btn" aria-label="Refresh">⟳</button>
+      </div>
+      <p class="dest">Live buses &amp; trains, wherever you are</p>
+
+      <div class="hero" id="hero">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="ring-bg" cx="60" cy="60" r="52"/>
+          <circle class="ring-fg" id="ringFg" cx="60" cy="60" r="52"/>
+        </svg>
+        <div class="hero-text">
+          <div class="hero-label" id="heroLabel">Finding you…</div>
+          <div class="hero-big" id="heroBig">📍</div>
+          <div class="hero-sub" id="heroSub">&nbsp;</div>
+        </div>
+      </div>
+      <div class="home-by" id="homeBy"></div>
+    </div>
+    <div class="road" aria-hidden="true">
+      <div class="road-line"></div>
+      <div class="driver" id="driver">🚌</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="from-bar">
+      <span class="from-label">From</span>
+      <span id="fromName" class="from-name">your location</span>
+      <button id="changeFrom" class="link-btn">change</button>
+    </section>
+    <section class="from-bar">
+      <span class="from-label">To</span>
+      <span id="homeName" class="from-name">🏡 not set</span>
+      <button id="changeHome" class="link-btn">set home</button>
+    </section>
+    <form id="fromForm" class="from-form" hidden>
+      <input id="fromInput" type="search" placeholder="Type a place, stop or postcode" autocomplete="off">
+      <button type="submit" class="pill">Go</button>
+      <button type="button" id="useGps" class="pill ghost">📍 Use GPS</button>
+      <ul id="suggestions" class="suggestions"></ul>
+    </form>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-filter="all" role="tab">✨ Best</button>
+      <button class="tab" data-filter="bus" role="tab">🚌 Bus only</button>
+      <button class="tab" data-filter="train" role="tab">🚆 With train</button>
+    </nav>
+
+    <div id="status" class="status" role="status"></div>
+    <ol id="journeys" class="journeys"></ol>
+
+    <div class="map-wrap">
+      <div id="map" class="map" aria-label="Map of selected journey"></div>
+    </div>
+
+    <p class="foot">
+      <span class="dot live"></span> live&nbsp;&nbsp;<span class="dot sched"></span> timetable ·
+      Updates every minute · Data: <a href="https://transitous.org" target="_blank" rel="noopener">Transitous</a>,
+      © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+      <br><span id="updated"></span>
+    </p>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="live.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

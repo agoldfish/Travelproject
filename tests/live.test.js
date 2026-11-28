@@ -68,6 +68,10 @@ test('bus waiting at the first stop before its start time is not late', () => {
   assert.equal(s.state, 'coming');
   assert.equal(s.delayMin, 0);
   assert.equal(s.stopsAway, BOARD);
+  assert.equal(s.waiting, true);
+  // Once it's on its way, it's no longer waiting.
+  const later = st[5].sched;
+  assert.equal(L.liveStatus(profile, BOARD, vehicleAt(5, later), later).waiting, false);
 });
 
 test('a GPS fix far from the route is unknown, not a wrong guess', () => {

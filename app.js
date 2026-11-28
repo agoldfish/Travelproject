@@ -118,11 +118,31 @@
     } catch { return 'your location'; }
   }
 
+  let watchId = null;
+  let plannedFrom = null; // where the current journey plans start
+  /** Follow the phone's position so the app notices when you reach your stop. */
+  function watchGps() {
+    if (watchId != null || !('geolocation' in navigator)) return;
+    watchId = navigator.geolocation.watchPosition((pos) => {
+      if (!state.from || state.from.source !== 'gps') return;
+      state.from.lat = pos.coords.latitude;
+      state.from.lon = pos.coords.longitude;
+      state.from.accuracy = pos.coords.accuracy;
+      if (plannedFrom && distM(state.from, plannedFrom) > 300) {
+        const f = state.from;
+        nameFor(f).then((n) => { if (state.from === f) { f.name = n; $('fromName').textContent = n; } });
+        refresh(true);
+      }
+      tick();
+    }, () => {}, { enableHighAccuracy: true, maximumAge: 10000 });
+  }
+
   async function startFromGps() {
     setHero('Finding you…', '📍', 'Allow location for live trips');
     try {
       const p = await locate();
       setFrom(p);
+      watchGps();
       nameFor(p).then((n) => { if (state.from === p) { p.name = n; $('fromName').textContent = n; } });
     } catch (e) {
       const saved = store.get();
@@ -193,6 +213,7 @@
     }
     if (!state.all.length) $('journeys').innerHTML = '<li class="skeleton"></li><li class="skeleton"></li>';
 
+    plannedFrom = { lat: state.from.lat, lon: state.from.lon };
     const base = `${API}/plan?fromPlace=${state.from.lat},${state.from.lon}&toPlace=${HOME.lat},${HOME.lon}&numItineraries=6&maxPreTransitTime=1500&maxPostTransitTime=1500`;
     try {
       const [any, bus] = await Promise.allSettled([
@@ -250,7 +271,8 @@
     const s = $('status'); s.textContent = msg; s.classList.toggle('err', !!err);
   }
 
-  function setHero(label, big, sub, frac = 0, urgent = false) {
+  function setHero(label, big, sub, frac = 0, urgent = false, atStop = false) {
+    $('hero').classList.toggle('at-stop', atStop);
     $('heroLabel').textContent = label;
     $('heroBig').innerHTML = big;
     $('heroSub').textContent = sub || ' ';
@@ -365,6 +387,8 @@
     document.querySelectorAll('.card').forEach((el) => {
       const s = +el.dataset.start + liveShift(el.dataset.bus), e = +el.dataset.end + liveShift(el.dataset.bus);
       el.querySelector('.js-leave').textContent = state.live.get(el.dataset.bus)?.state === 'gone' && Date.now() < s ? 'Bus has gone 😬' : leaveText(new Date(s));
+      const homeBy = el.querySelector('.arrive .t');
+      if (homeBy) homeBy.textContent = fmtTime(new Date(e));
       const dot = el.querySelector('.progress-dot');
       const now = Date.now();
       if (now > s && now < e) { dot.hidden = false; dot.style.left = `calc(${((now - s) / (e - s)) * 100}% - 2px)`; }
@@ -372,6 +396,7 @@
     });
 
     if (!list.length || !state.from || !HOME || atHome()) return;
+    if (showAtStop(list)) return;
     const next = nextJourney(list);
     const sh = shiftOf(next);
     const start = new Date(+new Date(next.startTime) + sh), end = new Date(+new Date(next.endTime) + sh);
@@ -379,7 +404,7 @@
     const firstT = next.legs.find((l) => isTransit(l.mode));
     const em = firstT ? modeInfo(firstT.mode).e : '🚶';
     const ls = firstT && isBusLeg(firstT) ? state.live.get(liveKey(firstT)) : null;
-    const liveTxt = ls?.state === 'coming' ? (ls.delayMin > 0 ? ` · running ${ls.delayMin} min late` : ' · on time') : '';
+    const liveTxt = ls?.state === 'coming' ? (ls.delayMin > 0 ? ` · ${ls.delayMin} min late` : ' · on time') : '';
     const catchTxt = firstT ? `for the ${legName(firstT)} ${modeInfo(firstT.mode).label.toLowerCase()}${liveTxt}` : 'walk home';
     $('driver').textContent = em;
 
@@ -393,6 +418,63 @@
       setHero('Next trip', fmtTime(start), catchTxt, 0);
     }
     $('homeBy').innerHTML = `<span>🏡 Home by ${fmtTime(end)}</span>`;
+  }
+
+  /* ---------------- at the stop ---------------- */
+  const AT_STOP_M = 80; // this close to your bus stop counts as being there
+
+  /** Best estimate of when this bus or train reaches its stop, and where that estimate comes from. */
+  function arrivalAt(l) {
+    const ls = isBusLeg(l) ? state.live.get(liveKey(l)) : null;
+    if (ls?.state === 'coming') return { t: ls.eta, src: 'live', ls };
+    if (l.realTime && l.from.departure) return { t: +new Date(l.from.departure), src: 'realtime', delay: delayInfo(l.from, 'departure') };
+    return { t: +new Date(l.from.scheduledDeparture || l.startTime), src: 'timetable' };
+  }
+
+  /** Journeys whose first bus or train leaves from the stop you're standing at, soonest first. */
+  function departuresHere(list) {
+    if (!state.from || state.from.source === 'manual') return []; // a typed-in place isn't where you are
+    const out = [];
+    for (const it of list) {
+      const l = it.legs.find((x) => isTransit(x.mode));
+      if (!l || l.cancelled) continue;
+      if (distM(state.from, { lat: l.from.lat, lon: l.from.lon }) > AT_STOP_M) continue;
+      if (isBusLeg(l) && state.live.get(liveKey(l))?.state === 'gone') continue;
+      const a = arrivalAt(l);
+      if (a.t < Date.now() - 2 * 60e3) continue;
+      out.push({ it, l, a });
+    }
+    return out.sort((x, y) => x.a.t - y.a.t);
+  }
+
+  /** If you're at the stop, show the most accurate arrival for it in the big ring. Returns true if shown. */
+  function showAtStop(list) {
+    const here = departuresHere(list);
+    if (!here.length) return false;
+    const [{ it, l, a }, ...more] = here;
+    const now = Date.now();
+    const m = (a.t - now) / 60000;
+    const name = legName(l);
+    const em = modeInfo(l.mode).e;
+    let detail;
+    if (a.src === 'live') {
+      const ls = a.ls;
+      const away = ls.waiting ? 'waiting to start' : ls.stopsAway === 0 ? 'at the stop' : ls.stopsAway === 1 ? '1 stop away' : `${ls.stopsAway} stops away`;
+      const late = ls.delayMin > 0 ? `${ls.delayMin} min late` : ls.delayMin < 0 ? `${-ls.delayMin} min early` : 'on time';
+      detail = `${away} · ${late}`;
+    } else if (a.src === 'realtime') {
+      detail = a.delay > 0 ? `${a.delay} min late · live time` : 'on time · live time';
+    } else {
+      detail = 'timetable time';
+    }
+    const big = m <= 0.25 ? 'Due' : m < 10 ? `${Math.floor(m)}:${String(Math.floor((m % 1) * 60)).padStart(2, '0')}` : m < 60 ? `${Math.round(m)}<small>min</small>` : fmtTime(new Date(a.t));
+    const label = `🚏 ${l.from.name}`.length > 22 ? `🚏 ${l.from.name.slice(0, 19)}…` : `🚏 ${l.from.name}`;
+    setHero(label, big, `${name} ${em} ${detail}`, 1 - Math.max(0, m) / 15, m < 1, true);
+    $('driver').textContent = em;
+    const end = new Date(+new Date(it.endTime) + Math.max(0, a.t - +new Date(l.from.scheduledDeparture || l.startTime)));
+    const then = more[0] ? ` · then ${legName(more[0].l)} ${fmtTime(new Date(more[0].a.t))}` : '';
+    $('homeBy').innerHTML = `<span>🏡 Home by ${fmtTime(end)}${esc(then)}</span>`;
+    return true;
   }
 
   const shiftOf = (it) => { const b = firstBus(it); return b ? liveShift(liveKey(b)) : 0; };
@@ -532,7 +614,7 @@
     switch (ls?.state) {
       case 'coming': {
         const late = ls.delayMin > 0 ? `<span class="late">${ls.delayMin} min late</span>` : ls.delayMin < 0 ? `<span class="ontime">${-ls.delayMin} min early</span>` : '<span class="ontime">on time</span>';
-        const away = ls.stopsAway === 0 ? 'at your stop now!' : ls.stopsAway === 1 ? '1 stop away' : `${ls.stopsAway} stops away`;
+        const away = ls.waiting ? `waiting to start, ${ls.stopsAway === 0 ? 'here' : ls.stopsAway === 1 ? '1 stop away' : `${ls.stopsAway} stops away`}` : ls.stopsAway === 0 ? 'at your stop now!' : ls.stopsAway === 1 ? '1 stop away' : `${ls.stopsAway} stops away`;
         const age = ls.ageSec > 120 ? ` · seen ${Math.round(ls.ageSec / 60)} min ago` : '';
         const txt = `${b('Live')} · ${away} · ${late} · due ${fmtTime(new Date(ls.eta))}${age}`;
         return plain ? txt.replace(/<[^>]+>/g, '') : txt;

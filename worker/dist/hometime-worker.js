@@ -231,7 +231,8 @@ var require_live = __commonJS({
         if (!where) return { ...base, state: "unknown" };
         if (where.d > board.dist + 40) return { ...base, state: "gone", along: where.d };
         let delaySec = (seen - schedAt(profile, where.d)) / 1e3;
-        if (profile.stops[0].sched === profile.startSched && where.d <= profile.stops[0].dist + 30 && seen < profile.stops[0].sched) delaySec = 0;
+        const waiting = profile.stops[0].sched === profile.startSched && where.d <= profile.stops[0].dist + 30 && seen < profile.stops[0].sched;
+        if (waiting) delaySec = 0;
         const etaMs = Math.max(now, board.sched + Math.max(delaySec, -120) * 1e3);
         const stopsAway = profile.stops.slice(0, boardIdx + 1).filter((s) => s.dist > where.d + 15).length;
         return {
@@ -241,7 +242,8 @@ var require_live = __commonJS({
           delayMin: Math.round(delaySec / 60),
           stopsAway,
           metresAway: Math.max(0, Math.round(board.dist - where.d)),
-          eta: etaMs
+          eta: etaMs,
+          waiting
         };
       }
       function searchBox(profile, boardIdx, maxSpan = 0.5, pad = 0.01) {

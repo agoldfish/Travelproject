@@ -110,6 +110,10 @@ h1 {
   stroke-dasharray: 326.7; stroke-dashoffset: 326.7; transition: stroke-dashoffset .8s ease, stroke .4s;
 }
 .hero.urgent .ring-fg { stroke: var(--accent-2); }
+.hero.at-stop .ring-fg { stroke: #7dffb3; }
+.hero.at-stop .ring-bg { fill: rgba(25, 195, 125, .22); }
+.hero.at-stop.urgent .ring-fg { stroke: var(--accent-2); }
+.hero.at-stop .hero-label { text-transform: none; letter-spacing: 0; font-size: 15px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hero.urgent .hero-big { animation: pulse 1s ease-in-out infinite; }
 .hero-text {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -118,7 +122,7 @@ h1 {
 .hero-label { font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 1.2px; opacity: .9; }
 .hero-big { font-family: "Baloo 2", sans-serif; font-weight: 800; font-size: 64px; line-height: 1; margin: 4px 0; font-variant-numeric: tabular-nums; }
 .hero-big small { font-size: 22px; font-weight: 700; }
-.hero-sub { font-size: 14px; font-weight: 700; opacity: .95; max-width: 170px; }
+.hero-sub { font-size: 13px; font-weight: 700; opacity: .95; max-width: 150px; line-height: 1.25; text-wrap: balance; overflow-wrap: anywhere; }
 .home-by {
   text-align: center; font-weight: 800; font-size: 16px; min-height: 24px; margin-bottom: 6px;
 }

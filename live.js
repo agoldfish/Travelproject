@@ -248,7 +248,9 @@
 
     let delaySec = (seen - schedAt(profile, where.d)) / 1000;
     // Still waiting at the first stop before its start time: it isn't late, it's early.
-    if (profile.stops[0].sched === profile.startSched && where.d <= profile.stops[0].dist + 30 && seen < profile.stops[0].sched) delaySec = 0;
+    // Parked at the start of its route before its start time: it's waiting, not late.
+    const waiting = profile.stops[0].sched === profile.startSched && where.d <= profile.stops[0].dist + 30 && seen < profile.stops[0].sched;
+    if (waiting) delaySec = 0;
     // If the report is old the bus has kept moving; we can't see that, so only count delay we know.
     const etaMs = Math.max(now, board.sched + Math.max(delaySec, -120) * 1000);
     const stopsAway = profile.stops.slice(0, boardIdx + 1).filter((s) => s.dist > where.d + 15).length;
@@ -260,6 +262,7 @@
       stopsAway,
       metresAway: Math.max(0, Math.round(board.dist - where.d)),
       eta: etaMs,
+      waiting,
     };
   }
 

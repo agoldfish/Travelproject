@@ -1,5 +1,5 @@
 // Caches the app shell so it opens instantly; journey data always comes from the network.
-const CACHE = 'hometime-v4';
+const CACHE = 'hometime-v6';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'live.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png'];
 
 self.addEventListener('install', (e) => {

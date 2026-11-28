@@ -8,6 +8,9 @@ or open it from Siri with a Shortcut.
   A red marker moves along the ribbon while you're travelling.
 - Tabs show **✨ Best**, **🚌 Bus only** or **🚆 With train** journeys.
 - A map draws the selected route.
+- **At the stop:** when you're within about 80 m of the stop for one of your journeys, the countdown switches to
+  that stop. It shows when the bus actually arrives, using the best information available (live GPS, then live
+  times, then the timetable), how many stops away and how late it is, and the next option from the same stop.
 - **Delay alerts:** tap *Delay alerts* and the app watches your next journey, plus any you tap 🔔 on.
   It alerts you when a bus or train is late (and again if it gets later), early, back on time, cancelled,
   or has left your stop early. You choose the threshold (1–10 min).
